@@ -1,110 +1,485 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>MediScribe Realtime Demo</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 2rem; }
-        button { margin-right: 1rem; padding: 0.5rem 1.25rem; }
-        pre { background: #f7f7f7; padding: 1rem; height: 300px; overflow-y: auto; }
-    </style>
+  <meta charset="utf-8" />
+  <title>Mediscribe - Live Medical Transcribe</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --card: #1e293b;
+      --ink: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --danger: #ef4444;
+      --border: #334155;
+      --shadow: 0 2px 8px rgba(0,0,0,.35);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font: 500 15px/1.6 "Segoe UI", sans-serif;
+      letter-spacing: 0.1px;
+    }
+
+    .wrap { max-width: 1100px; margin: auto; padding: 32px; }
+
+    header {
+      display: flex; gap: 16px; align-items: center; margin-bottom: 28px;
+    }
+    .logo {
+      width: 48px; height: 48px; display: grid; place-items: center;
+      border-radius: 12px;
+      background: var(--accent);
+      font-weight: 700; color: #fff;
+      font-size: 18px;
+      box-shadow: var(--shadow);
+    }
+    h1 { font-size: 22px; margin: 0; color: var(--ink); font-weight: 600; }
+    .sub { color: var(--muted); margin-top: 6px; font-size: 15px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 20px;
+    }
+    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px 22px 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .toolbar {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-weight: 600;
+      font-family: "Segoe UI", sans-serif;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+    }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+      color: #fff;
+    }
+    .primary:hover:not(:disabled) {
+      filter: brightness(1.1);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.3);
+    }
+
+    .stop {
+      background: linear-gradient(135deg, var(--danger), #b91c1c);
+      color: #fff;
+    }
+    .stop:hover:not(:disabled) {
+      filter: brightness(1.15);
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.3);
+    }
+
+    .badge {
+      font-size: 13px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #1e293b;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #64748b;
+    }
+    .connected .status-dot { background: #22c55e; }
+    .streaming .status-dot { background: var(--accent); }
+    .stopped .status-dot { background: #64748b; }
+    .error .status-dot { background: var(--danger); }
+
+    textarea {
+      width: 100%;
+      min-height: 360px;
+      resize: vertical;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #111827;
+      color: var(--ink);
+      padding: 14px;
+      font: 500 14px/1.6 "Consolas", "SFMono-Regular", monospace;
+      outline: none;
+      transition: border .15s, box-shadow .15s;
+    }
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.35);
+    }
+
+    label { font-size: 13px; color: var(--muted); }
+    select {
+      background: #1e293b;
+      color: var(--ink);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-weight: 500;
+      font-family: "Segoe UI", sans-serif;
+      outline: none;
+      transition: border .15s, box-shadow .15s, background .15s;
+    }
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.3);
+      background: #27364d;
+    }
+
+    .row { display: flex; gap: 14px; flex-wrap: wrap; }
+    .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .meter {
+      width: 100%;
+      height: 18px;
+      background: #27364d;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .meter-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, var(--accent));
+      transition: width 0.1s;
+    }
+
+    .foot {
+      margin-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .mono {
+      font-family: "Consolas", monospace;
+      font-size: 12px;
+    }
+  </style>
 </head>
 <body>
-<h2>Realtime AWS Transcribe Medical</h2>
-<p>Click <strong>Start</strong> to send microphone audio to the server and receive live transcripts.</p>
-<button id="start">Start</button>
-<button id="stop" disabled>Stop</button>
-<pre id="log"></pre>
+  <div class="wrap">
+    <header>
+      <div class="logo">Rx</div>
+      <div>
+        <h1>Mediscribe – Live Medical Transcribe</h1>
+        <div class="sub">Stream your microphone to AWS Transcribe Medical for real-time medical transcription.</div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <div class="toolbar">
+          <button id="btnStart" class="btn primary">Start Recording</button>
+          <button id="btnStop" class="btn stop" disabled>Stop</button>
+          <span id="status" class="badge stopped"><span class="status-dot"></span><span id="statusText">Disconnected</span></span>
+        </div>
+
+        <div class="row" style="gap:16px; margin-bottom:10px">
+          <div>
+            <label>Language</label><br/>
+            <select id="language">
+              <option value="en-US" selected>English (US)</option>
+            </select>
+          </div>
+          <div>
+            <label>Medical Specialty</label><br/>
+            <select id="specialty">
+              <option value="PRIMARYCARE" selected>Primary Care</option>
+              <option value="CARDIOLOGY">Cardiology</option>
+              <option value="NEUROLOGY">Neurology</option>
+              <option value="ONCOLOGY">Oncology</option>
+              <option value="RADIOLOGY">Radiology</option>
+              <option value="UROLOGY">Urology</option>
+              <option value="OBGYN">OB/GYN</option>
+            </select>
+          </div>
+          <div>
+            <label>Conversation Type</label><br/>
+            <select id="convType">
+              <option value="CONVERSATION" selected>Clinician–Patient</option>
+              <option value="DICTATION">Dictation</option>
+            </select>
+          </div>
+        </div>
+
+        <textarea id="transcript" placeholder="Transcripts will appear here..."></textarea>
+
+        <div class="foot">
+          <div class="mono" id="log">Ready.</div>
+          <div class="mono">PCM 16-bit • 16kHz mono • streamed via WebSocket</div>
+        </div>
+      </section>
+
+      <aside class="card">
+        <div class="kv">
+          <div style="grid-column: 1 / -1">
+            <label>Audio Level (shows green when speaking)</label>
+            <div class="meter">
+              <div class="meter-fill" id="meterFill" style="width:0%"></div>
+            </div>
+          </div>
+          <div>
+            <label>Peak Level</label>
+            <div class="mono" id="peak">–</div>
+          </div>
+          <div>
+            <label>RMS Level</label>
+            <div class="mono" id="rms">–</div>
+          </div>
+          <div>
+            <label>Chunks Sent</label>
+            <div class="mono" id="sent">0</div>
+          </div>
+          <div>
+            <label>Final Lines</label>
+            <div class="mono" id="finals">0</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
 <script>
-const logElement = document.getElementById('log');
-const log = (message) => {
-    logElement.textContent += message + "\n";
-    logElement.scrollTop = logElement.scrollHeight;
+const $ = sel => document.querySelector(sel);
+const log = msg => { $('#log').textContent = msg; };
+const setStatus = (cls, txt) => {
+  const s = $('#status');
+  s.className = 'badge ' + cls;
+  $('#statusText').textContent = txt;
 };
 
-let websocket;
-let audioContext;
-let mediaStream;
-let processor;
-let recording = false;
+let ws, audioCtx, mediaStream, processor, heartbeatTimer;
+let chunksSent = 0, finals = 0, running = false;
 
-const SAMPLE_RATE = 16000;
+function appendTranscript(line, final=false) {
+  const ta = $('#transcript');
+  if (final) {
+    ta.value += (ta.value && !ta.value.endsWith('\n') ? '\n' : '') + line;
+    $('#finals').textContent = ++finals;
+  } else {
+    log('Partial: ' + line);
+  }
+  ta.scrollTop = ta.scrollHeight;
+}
 
-function floatTo16BitPCM(float32Array) {
-    const buffer = new ArrayBuffer(float32Array.length * 2);
-    const view = new DataView(buffer);
-    for (let i = 0; i < float32Array.length; i++) {
-        const sample = Math.max(-1, Math.min(1, float32Array[i]));
-        view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-    }
-    return buffer;
+// Proper linear interpolation resampler
+function resample(input, inputRate, outputRate) {
+  const ratio = inputRate / outputRate;
+  const outputLength = Math.round(input.length / ratio);
+  const output = new Float32Array(outputLength);
+  
+  for (let i = 0; i < outputLength; i++) {
+    const srcPos = i * ratio;
+    const srcIdx = Math.floor(srcPos);
+    const nextIdx = Math.min(srcIdx + 1, input.length - 1);
+    const frac = srcPos - srcIdx;
+    
+    output[i] = input[srcIdx] * (1 - frac) + input[nextIdx] * frac;
+  }
+  
+  return output;
+}
+
+// Convert float32 to int16 PCM
+function floatToPCM16(input) {
+  const output = new Int16Array(input.length);
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return output;
 }
 
 async function start() {
-    websocket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/stream`);
-    websocket.onopen = () => log('✅ WebSocket connected');
-    websocket.onclose = () => log('🔌 WebSocket closed');
-    websocket.onerror = (event) => log(`⚠️ WebSocket error: ${event.message || 'unknown'}`);
+  if (running) return;
+  running = true;
+  $('#btnStart').disabled = true;
+  $('#btnStop').disabled = false;
+  setStatus('connected', 'connecting…');
+  log('Requesting microphone…');
 
-    websocket.onmessage = (event) => {
-        try {
-            const payload = JSON.parse(event.data);
-            const results = payload?.TranscriptResultStream?.TranscriptEvent?.Transcript?.Results || [];
-            results.forEach((result) => {
-                if (!result.Alternatives?.length) return;
-                const text = result.Alternatives[0].Transcript;
-                log(`${result.IsPartial ? '⏳ Partial' : '✅ Final'}: ${text}`);
-            });
-        } catch (error) {
-            log(`⚠️ Unable to parse message: ${error}`);
+  const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/stream';
+  ws = new WebSocket(wsUrl);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = async () => {
+    setStatus('streaming', 'streaming');
+    log('WebSocket connected.');
+
+    try {
+      // Request mic with minimal processing
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,  // Disable AGC to prevent clipping
+          channelCount: 1
         }
-    };
+      });
 
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(mediaStream);
+      log('Microphone access granted');
 
-    processor = audioContext.createScriptProcessor(2048, 1, 1);
-    processor.onaudioprocess = (event) => {
-        if (!recording || websocket.readyState !== WebSocket.OPEN) return;
+      // Create audio context with default sample rate
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      await audioCtx.resume();
+      
+      const inputSampleRate = audioCtx.sampleRate;
+      const targetSampleRate = 16000;
+      
+      log(`Audio: ${inputSampleRate}Hz → ${targetSampleRate}Hz`);
 
-        const input = event.inputBuffer.getChannelData(0);
-        const targetLength = Math.floor(input.length * SAMPLE_RATE / audioContext.sampleRate);
-        const downsampled = new Float32Array(targetLength);
-        const ratio = input.length / targetLength;
-        for (let i = 0; i < targetLength; i++) {
-            downsampled[i] = input[Math.floor(i * ratio)];
+      const source = audioCtx.createMediaStreamSource(mediaStream);
+      
+      // Use ScriptProcessor for reliable audio capture
+      const bufferSize = 4096;
+      processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+      
+      let accumulatedSamples = [];
+      const targetChunkSize = 1600; // 100ms at 16kHz
+      
+      processor.onaudioprocess = (event) => {
+        if (!ws || ws.readyState !== 1) return;
+        
+        // CRITICAL: Copy the data to prevent reuse issues
+        const inputBuffer = event.inputBuffer.getChannelData(0);
+        const inputData = new Float32Array(inputBuffer);
+        
+        // Calculate actual audio levels for display
+        let sumSquares = 0;
+        let peak = 0;
+        for (let i = 0; i < inputData.length; i++) {
+          const val = inputData[i];
+          sumSquares += val * val;
+          peak = Math.max(peak, Math.abs(val));
         }
+        const rms = Math.sqrt(sumSquares / inputData.length);
+        
+        // Log raw input levels for debugging
+        if (chunksSent === 0) {
+          console.log('First raw input - Peak:', peak, 'RMS:', rms);
+        }
+        
+        // Update display
+        $('#rms').textContent = rms.toFixed(4);
+        $('#peak').textContent = peak.toFixed(4);
+        const meterLevel =Math.min(100, Math.pow(peak, 0.5) * 100); // Scale for visibility
+        $('#meterFill').style.width = meterLevel + '%';
+        
+        // Resample to 16kHz
+        const resampled = resample(inputData, inputSampleRate, targetSampleRate);
+        
+        // Accumulate samples
+        for (let i = 0; i < resampled.length; i++) {
+          accumulatedSamples.push(resampled[i]);
+        }
+        
+        // Send when we have enough samples
+        while (accumulatedSamples.length >= targetChunkSize) {
+          const chunk = new Float32Array(accumulatedSamples.splice(0, targetChunkSize));
+          const pcm16 = floatToPCM16(chunk);
+          
+          // Send as Int16Array directly, not as Float32
+          ws.send(chunk.buffer);
+          $('#sent').textContent = ++chunksSent;
+        }
+      };
+      
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
 
-        websocket.send(floatTo16BitPCM(downsampled));
-    };
+      // Heartbeat
+      heartbeatTimer = setInterval(() => {
+        if (ws && ws.readyState === 1) {
+          try { ws.send(new Uint8Array(0)); } catch {}
+        }
+      }, 8000);
 
-    source.connect(processor);
-    processor.connect(audioContext.destination);
+      log('Streaming… Speak clearly into your microphone.');
 
-    recording = true;
-    document.getElementById('start').disabled = true;
-    document.getElementById('stop').disabled = false;
-    log('🎙️ Recording...');
+    } catch (err) {
+      console.error('Mic error:', err);
+      log('Microphone error: ' + err.message);
+      setStatus('error', 'mic error');
+    }
+  };
+
+  ws.onclose = () => {
+    setStatus('stopped', 'disconnected');
+    log('WebSocket closed.');
+  };
+
+  ws.onerror = e => {
+    console.error(e);
+    setStatus('error', 'error');
+    log('WebSocket error.');
+  };
+
+  ws.onmessage = evt => {
+    try {
+      const text = typeof evt.data === 'string' ? evt.data : new TextDecoder().decode(evt.data);
+      if (text.includes('"Transcript"')) {
+        const json = JSON.parse(text.slice(text.indexOf('{')));
+        const results = json?.Transcript?.Results || [];
+        for (const r of results) {
+          const t = (r.Alternatives?.[0]?.Transcript || '').trim();
+          if (!t) continue;
+          appendTranscript(t, !r.IsPartial);
+        }
+      }
+    } catch (err) {
+      console.warn('parse error', err);
+    }
+  };
 }
 
-function stop() {
-    recording = false;
-    if (processor) processor.disconnect();
-    if (audioContext) audioContext.close();
-    if (mediaStream) mediaStream.getTracks().forEach((track) => track.stop());
-    if (websocket && websocket.readyState === WebSocket.OPEN) websocket.close();
+async function stop() {
+  if (!running) return;
+  running = false;
+  $('#btnStop').disabled = true;
 
-    document.getElementById('start').disabled = false;
-    document.getElementById('stop').disabled = true;
-    log('🛑 Recording stopped');
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  try { processor && processor.disconnect(); } catch {}
+  try { audioCtx && await audioCtx.close(); } catch {}
+  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+  if (ws && ws.readyState === 1) try { ws.close(); } catch {}
+
+  $('#btnStart').disabled = false;
+  $('#meterFill').style.width = '0%';
+  $('#peak').textContent = '–';
+  $('#rms').textContent = '–';
+  setStatus('stopped', 'stopped');
+  log('Stopped.');
 }
 
-document.getElementById('start').addEventListener('click', () => {
-    if (!recording) start().catch((error) => log(`⚠️ Unable to start: ${error}`));
-});
-
-document.getElementById('stop').addEventListener('click', stop);
+$('#btnStart').addEventListener('click', start);
+$('#btnStop').addEventListener('click', stop);
 </script>
 </body>
 </html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>MediScribe Realtime Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        button { margin-right: 1rem; padding: 0.5rem 1.25rem; }
+        pre { background: #f7f7f7; padding: 1rem; height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+<h2>Realtime AWS Transcribe Medical</h2>
+<p>Click <strong>Start</strong> to send microphone audio to the server and receive live transcripts.</p>
+<button id="start">Start</button>
+<button id="stop" disabled>Stop</button>
+<pre id="log"></pre>
+<script>
+const logElement = document.getElementById('log');
+const log = (message) => {
+    logElement.textContent += message + "\n";
+    logElement.scrollTop = logElement.scrollHeight;
+};
+
+let websocket;
+let audioContext;
+let mediaStream;
+let processor;
+let recording = false;
+
+const SAMPLE_RATE = 16000;
+
+function floatTo16BitPCM(float32Array) {
+    const buffer = new ArrayBuffer(float32Array.length * 2);
+    const view = new DataView(buffer);
+    for (let i = 0; i < float32Array.length; i++) {
+        const sample = Math.max(-1, Math.min(1, float32Array[i]));
+        view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+    }
+    return buffer;
+}
+
+async function start() {
+    websocket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/stream`);
+    websocket.onopen = () => log('✅ WebSocket connected');
+    websocket.onclose = () => log('🔌 WebSocket closed');
+    websocket.onerror = (event) => log(`⚠️ WebSocket error: ${event.message || 'unknown'}`);
+
+    websocket.onmessage = (event) => {
+        try {
+            const payload = JSON.parse(event.data);
+            const results = payload?.TranscriptResultStream?.TranscriptEvent?.Transcript?.Results || [];
+            results.forEach((result) => {
+                if (!result.Alternatives?.length) return;
+                const text = result.Alternatives[0].Transcript;
+                log(`${result.IsPartial ? '⏳ Partial' : '✅ Final'}: ${text}`);
+            });
+        } catch (error) {
+            log(`⚠️ Unable to parse message: ${error}`);
+        }
+    };
+
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(mediaStream);
+
+    processor = audioContext.createScriptProcessor(2048, 1, 1);
+    processor.onaudioprocess = (event) => {
+        if (!recording || websocket.readyState !== WebSocket.OPEN) return;
+
+        const input = event.inputBuffer.getChannelData(0);
+        const targetLength = Math.floor(input.length * SAMPLE_RATE / audioContext.sampleRate);
+        const downsampled = new Float32Array(targetLength);
+        const ratio = input.length / targetLength;
+        for (let i = 0; i < targetLength; i++) {
+            downsampled[i] = input[Math.floor(i * ratio)];
+        }
+
+        websocket.send(floatTo16BitPCM(downsampled));
+    };
+
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+
+    recording = true;
+    document.getElementById('start').disabled = true;
+    document.getElementById('stop').disabled = false;
+    log('🎙️ Recording...');
+}
+
+function stop() {
+    recording = false;
+    if (processor) processor.disconnect();
+    if (audioContext) audioContext.close();
+    if (mediaStream) mediaStream.getTracks().forEach((track) => track.stop());
+    if (websocket && websocket.readyState === WebSocket.OPEN) websocket.close();
+
+    document.getElementById('start').disabled = false;
+    document.getElementById('stop').disabled = true;
+    log('🛑 Recording stopped');
+}
+
+document.getElementById('start').addEventListener('click', () => {
+    if (!recording) start().catch((error) => log(`⚠️ Unable to start: ${error}`));
+});
+
+document.getElementById('stop').addEventListener('click', stop);
+</script>
+</body>
+</html>
