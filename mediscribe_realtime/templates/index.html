@@ -227,6 +227,13 @@
               <option value="DICTATION">Dictation</option>
             </select>
           </div>
+          <div>
+            <label>Sample Rate</label><br/>
+            <select id="sampleRate">
+              <option value="16000" selected>16 kHz</option>
+              <option value="8000">8 kHz</option>
+            </select>
+          </div>
         </div>
 
         <textarea id="transcript" placeholder="Transcripts will appear here..."></textarea>
@@ -325,7 +332,14 @@ async function start() {
   setStatus('connected', 'connecting…');
   log('Requesting microphone…');
 
-  const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/stream';
+  const params = new URLSearchParams({
+    language: $('#language').value,
+    specialty: $('#specialty').value,
+    conversationType: $('#convType').value,
+    sampleRate: $('#sampleRate').value,
+  });
+  const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+    location.host + '/stream?' + params.toString();
   ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
 
@@ -351,7 +365,7 @@ async function start() {
       await audioCtx.resume();
       
       const inputSampleRate = audioCtx.sampleRate;
-      const targetSampleRate = 16000;
+      const targetSampleRate = parseInt($('#sampleRate').value, 10) || 16000;
       
       log(`Audio: ${inputSampleRate}Hz → ${targetSampleRate}Hz`);
 

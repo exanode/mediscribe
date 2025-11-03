@@ -43,6 +43,14 @@ def create_presigned_url(
     if not AWS_ACCESS_KEY or not AWS_SECRET_KEY:
         raise RuntimeError("Missing AWS credentials")
 
+    try:
+        rate_int = int(rate)
+    except (TypeError, ValueError):
+        rate_int = 16000
+
+    if rate_int not in (8000, 16000):
+        rate_int = 16000
+
     host = f"transcribestreaming.{region}.amazonaws.com:8443"
     endpoint = f"wss://{host}/medical-stream-transcription-websocket"
 
@@ -61,7 +69,7 @@ def create_presigned_url(
         "X-Amz-SignedHeaders": "host",
         "language-code": language,
         "media-encoding": "pcm",
-        "sample-rate": str(rate),
+        "sample-rate": str(rate_int),
         "specialty": specialty,
         "type": conv_type,
         "session-id": str(uuid.uuid4()),

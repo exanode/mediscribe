@@ -14,6 +14,55 @@ from aws_signer import create_presigned_url
 
 print("----== app.py loaded successfully ==----")
 
+ALLOWED_LANGUAGES = {"en-us": "en-US"}
+ALLOWED_SPECIALTIES = {
+    "cardiology": "CARDIOLOGY",
+    "neurology": "NEUROLOGY",
+    "oncology": "ONCOLOGY",
+    "primarycare": "PRIMARYCARE",
+    "radiology": "RADIOLOGY",
+    "urology": "UROLOGY",
+    "obgyn": "OBGYN",
+}
+ALLOWED_CONV_TYPES = {
+    "conversation": "CONVERSATION",
+    "dictation": "DICTATION",
+}
+ALLOWED_SAMPLE_RATES = {"8000": 8000, "16000": 16000}
+
+
+def _resolve_query_param(query, keys, *, default, normalizer=None, allowed=None):
+    if isinstance(keys, str):
+        keys = [keys]
+
+    raw_value = None
+    for key in keys:
+        value = query.get(key)
+        if value is not None:
+            raw_value = value
+            break
+
+    if raw_value is None:
+        return default
+
+    raw_value = raw_value.strip()
+    if not raw_value:
+        return default
+
+    value = normalizer(raw_value) if normalizer else raw_value
+
+    if allowed is None:
+        return value
+
+    if isinstance(allowed, dict):
+        lookup_key = value.lower()
+        return allowed.get(lookup_key, default)
+
+    if value in allowed:
+        return value
+
+    return default
+
 app = FastAPI(title="MediScribe Realtime", version="1.0")
 
 app.add_middleware(
@@ -90,11 +139,65 @@ async def stream(ws: WebSocket) -> None:
     print("WebSocket accepted from browser")
 
     # --------------------------------------------------------
+    # Resolve stream configuration from browser query params
+    # --------------------------------------------------------
+    language = _resolve_query_param(
+        ws.query_params,
+        "language",
+        default="en-US",
+        normalizer=lambda v: v.replace("_", "-")
+        if v
+        else v,
+        allowed=ALLOWED_LANGUAGES,
+    )
+    specialty = _resolve_query_param(
+        ws.query_params,
+        "specialty",
+        default="PRIMARYCARE",
+        normalizer=str.lower,
+        allowed=ALLOWED_SPECIALTIES,
+    )
+    conv_type = _resolve_query_param(
+        ws.query_params,
+        ["conversationType", "convType"],
+        default="CONVERSATION",
+        normalizer=str.lower,
+        allowed=ALLOWED_CONV_TYPES,
+    )
+    sample_rate = _resolve_query_param(
+        ws.query_params,
+        ["sampleRate", "sample-rate"],
+        default="16000",
+        normalizer=lambda v: "".join(ch for ch in v if ch.isdigit()),
+        allowed=ALLOWED_SAMPLE_RATES,
+    )
+    aws_sample_rate = (
+        ALLOWED_SAMPLE_RATES.get(str(sample_rate), 16000)
+        if isinstance(sample_rate, str)
+        else sample_rate
+    )
+
+    print(
+        "Using stream configuration:",
+        {
+            "language": language,
+            "specialty": specialty,
+            "type": conv_type,
+            "sample_rate": aws_sample_rate,
+        },
+    )
+
+    # --------------------------------------------------------
     # Connect to AWS Transcribe Medical WebSocket
     # --------------------------------------------------------
     async def connect_to_aws():
         """Create a fresh signed AWS websocket connection."""
-        signed_url = create_presigned_url()
+        signed_url = create_presigned_url(
+            language=language,
+            specialty=specialty,
+            conv_type=conv_type,
+            rate=aws_sample_rate,
+        )
         print("Connecting to AWS Transcribe Medical...")
         print(f"Signed URL (first 150 chars): {signed_url[:150]}...")
         print(f"Full URL length: {len(signed_url)} characters")
