@@ -61,7 +61,7 @@ def create_presigned_url(
         "X-Amz-SignedHeaders": "host",
         "language-code": language,
         "media-encoding": "pcm",
-        "sample-rate": str(rate),
+        "sample-rate": str(rate_int),
         "specialty": specialty,
         "type": conv_type,
         "session-id": str(uuid.uuid4()),
