@@ -325,7 +325,16 @@ async function start() {
   setStatus('connected', 'connecting…');
   log('Requesting microphone…');
 
-  const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/stream';
+  
+  //const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/stream';
+  const params = new URLSearchParams({
+    language: $('#language').value,
+    specialty: $('#specialty').value,
+    conversationType: $('#convType').value,
+    sampleRate: $('#sampleRate').value,
+  });
+  const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+    location.host + '/stream?' + params.toString();
   ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
 
@@ -351,7 +360,7 @@ async function start() {
       await audioCtx.resume();
       
       const inputSampleRate = audioCtx.sampleRate;
-      const targetSampleRate = 16000;
+      const targetSampleRate = parseInt($('#sampleRate').value, 10) || 16000;
       
       log(`Audio: ${inputSampleRate}Hz → ${targetSampleRate}Hz`);
 
