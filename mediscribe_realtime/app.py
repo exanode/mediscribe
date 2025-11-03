@@ -14,6 +14,9 @@ from aws_signer import create_presigned_url
 
 print("----== app.py loaded successfully ==----")
 
+# ------------------------------------------------------------
+# Allowed configuration sets
+# ------------------------------------------------------------
 ALLOWED_LANGUAGES = {"en-us": "en-US"}
 ALLOWED_SPECIALTIES = {
     "cardiology": "CARDIOLOGY",
@@ -32,6 +35,7 @@ ALLOWED_SAMPLE_RATES = {"8000": 8000, "16000": 16000}
 
 
 def _resolve_query_param(query, keys, *, default, normalizer=None, allowed=None):
+    """Resolve query param with normalization and allowed-value mapping."""
     if isinstance(keys, str):
         keys = [keys]
 
@@ -62,6 +66,7 @@ def _resolve_query_param(query, keys, *, default, normalizer=None, allowed=None)
         return value
 
     return default
+
 
 app = FastAPI(title="MediScribe Realtime", version="1.0")
 
@@ -145,9 +150,7 @@ async def stream(ws: WebSocket) -> None:
         ws.query_params,
         "language",
         default="en-US",
-        normalizer=lambda v: v.replace("_", "-")
-        if v
-        else v,
+        normalizer=lambda v: v.replace("_", "-") if v else v,
         allowed=ALLOWED_LANGUAGES,
     )
     specialty = _resolve_query_param(

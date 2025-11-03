@@ -332,6 +332,8 @@ async function start() {
   setStatus('connected', 'connecting…');
   log('Requesting microphone…');
 
+  
+  //const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/stream';
   const params = new URLSearchParams({
     language: $('#language').value,
     specialty: $('#specialty').value,
