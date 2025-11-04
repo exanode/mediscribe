@@ -7,10 +7,13 @@ import struct
 import zlib
 import numpy as np
 import websockets
-from fastapi import FastAPI, WebSocket
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from aws_signer import create_presigned_url
+from pydantic import BaseModel
+from aws_signer import create_presigned_url, AWS_REGION
 
 print("----== app.py loaded successfully ==----")
 
@@ -68,6 +71,13 @@ def _resolve_query_param(query, keys, *, default, normalizer=None, allowed=None)
     return default
 
 
+MAX_COMPREHEND_TEXT_LENGTH = 20000
+
+
+class AnalyzePayload(BaseModel):
+    text: str
+
+
 app = FastAPI(title="MediScribe Realtime", version="1.0")
 
 app.add_middleware(
@@ -76,6 +86,125 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+comprehend_client = boto3.client("comprehendmedical", region_name=AWS_REGION)
+
+
+def _normalize_concept_key(value: str) -> str:
+    return " ".join(value.lower().split())
+
+
+def _collect_traits(traits):
+    collected = []
+    for trait in traits or []:
+        name = trait.get("Name")
+        score = trait.get("Score", 0)
+        if name and score >= 0.5:
+            collected.append({"name": name, "score": score})
+    return collected
+
+
+def _build_concept_lookup(entities, concept_key):
+    lookup = {}
+    for entity in entities or []:
+        mention = (entity.get("Text") or "").strip()
+        if not mention:
+            continue
+        norm = _normalize_concept_key(mention)
+        concepts = []
+        for concept in entity.get(concept_key, []) or []:
+            code = concept.get("Code")
+            if not code:
+                continue
+            concepts.append(
+                {
+                    "code": code,
+                    "description": concept.get("Description"),
+                    "score": concept.get("Score"),
+                    "source": mention,
+                }
+            )
+        if concepts:
+            seen_codes = {c["code"] for c in lookup.get(norm, [])}
+            filtered = [c for c in concepts if c["code"] not in seen_codes]
+            if filtered:
+                lookup.setdefault(norm, []).extend(filtered)
+    return lookup
+
+
+def _summarize_unique_codes(lookup):
+    seen = set()
+    summary = []
+    for concepts in lookup.values():
+        for concept in concepts:
+            code = concept.get("code")
+            if code and code not in seen:
+                seen.add(code)
+                summary.append(concept)
+    return summary
+
+
+@app.post("/analyze")
+async def analyze(payload: AnalyzePayload):
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Transcription text is required for analysis.")
+
+    truncated = False
+    if len(text) > MAX_COMPREHEND_TEXT_LENGTH:
+        text = text[:MAX_COMPREHEND_TEXT_LENGTH]
+        truncated = True
+
+    try:
+        detect_response = await asyncio.to_thread(comprehend_client.detect_entities_v2, Text=text)
+        icd_response = await asyncio.to_thread(comprehend_client.infer_icd10_cm, Text=text)
+        snomed_response = await asyncio.to_thread(comprehend_client.infer_snomedct, Text=text)
+    except (BotoCoreError, ClientError) as exc:
+        raise HTTPException(status_code=502, detail=f"AWS Comprehend Medical error: {exc}") from exc
+
+    icd_lookup = _build_concept_lookup(icd_response.get("Entities"), "ICD10CMConcepts")
+    snomed_lookup = _build_concept_lookup(snomed_response.get("Entities"), "SNOMEDCTConcepts")
+
+    entities_payload = {"conditions": [], "tests": [], "treatments": [], "procedures": []}
+
+    for entity in detect_response.get("Entities", []):
+        text_value = (entity.get("Text") or "").strip()
+        if not text_value:
+            continue
+
+        record = {
+            "text": text_value,
+            "confidence": entity.get("Score"),
+            "traits": _collect_traits(entity.get("Traits")),
+        }
+
+        norm_key = _normalize_concept_key(text_value)
+        if norm_key in icd_lookup:
+            record["icd10"] = icd_lookup[norm_key]
+        if norm_key in snomed_lookup:
+            record["snomed"] = snomed_lookup[norm_key]
+
+        category = entity.get("Category") or ""
+        entity_type = (entity.get("Type") or "").upper()
+
+        if category == "MEDICAL_CONDITION":
+            entities_payload["conditions"].append(record)
+        elif category == "TEST_TREATMENT_PROCEDURE":
+            if "TEST" in entity_type:
+                entities_payload["tests"].append(record)
+            elif "TREATMENT" in entity_type:
+                entities_payload["treatments"].append(record)
+            else:
+                entities_payload["procedures"].append(record)
+
+    return {
+        "entities": entities_payload,
+        "summary": {
+            "icd10": _summarize_unique_codes(icd_lookup),
+            "snomed": _summarize_unique_codes(snomed_lookup),
+        },
+        "truncated": truncated,
+    }
 
 # ------------------------------------------------------------
 # AWS EventStream Wrappers
