@@ -210,6 +210,12 @@
       font-weight: 600;
       color: var(--ink);
     }
+    .analysis-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
     .analysis-body {
       background: #111827;
       border: 1px solid var(--border);
@@ -218,6 +224,21 @@
       min-height: 150px;
       font-size: 13px;
       color: var(--ink);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: min(55vh, 420px);
+      overflow-y: auto;
+    }
+    .analysis-body::-webkit-scrollbar {
+      width: 8px;
+    }
+    .analysis-body::-webkit-scrollbar-track {
+      background: rgba(15,23,42,0.6);
+    }
+    .analysis-body::-webkit-scrollbar-thumb {
+      background: rgba(59,130,246,0.35);
+      border-radius: 999px;
     }
     .analysis-block + .analysis-block { margin-top: 12px; }
     .analysis-block h4 {
@@ -235,6 +256,7 @@
     .analysis-block li {
       margin-bottom: 6px;
       line-height: 1.5;
+      word-break: break-word;
     }
     .code-pills {
       display: flex;
@@ -250,12 +272,58 @@
       font-size: 12px;
       font-family: "Consolas", monospace;
       border: 1px solid rgba(59,130,246,0.35);
+      white-space: normal;
+      word-break: break-word;
     }
     .muted { color: var(--muted); }
     .analysis-note {
       margin-top: 8px;
       font-size: 12px;
       color: var(--muted);
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(3px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 1000;
+    }
+    .modal-overlay.visible {
+      display: flex;
+    }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      max-width: 720px;
+      width: min(100%, 680px);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .modal h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .modal textarea {
+      min-height: 260px;
+      resize: vertical;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    body.modal-open {
+      overflow: hidden;
     }
   </style>
 </head>
@@ -348,13 +416,28 @@
         <div class="analysis-section">
           <div class="analysis-header">
             <h3>Clinical Insights</h3>
-            <button id="btnAnalyze" class="btn secondary small">Analyze Notes</button>
+            <div class="analysis-actions">
+              <button id="btnEditTranscript" class="btn secondary small" type="button">Edit Transcript</button>
+              <button id="btnAnalyze" class="btn primary small" type="button">Analyze Notes</button>
+            </div>
           </div>
           <div id="analysisResults" class="analysis-body">
             <p class="muted">Run analysis to extract clinical entities and billing codes.</p>
           </div>
         </div>
       </aside>
+    </div>
+  </div>
+
+  <div id="editTranscriptOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="editTranscriptTitle">
+    <div class="modal">
+      <h3 id="editTranscriptTitle">Review Transcript</h3>
+      <p class="muted">Make adjustments to the transcription before running clinical analysis.</p>
+      <textarea id="editTranscriptInput" spellcheck="false"></textarea>
+      <div class="modal-actions">
+        <button id="btnCancelEdit" class="btn secondary small" type="button">Cancel</button>
+        <button id="btnSaveEdit" class="btn primary small" type="button">Save Changes</button>
+      </div>
     </div>
   </div>
 
@@ -577,6 +660,38 @@ async function analyzeTranscript() {
   }
 }
 
+function openTranscriptEditor() {
+  const overlay = $('#editTranscriptOverlay');
+  const editor = $('#editTranscriptInput');
+  const transcript = $('#transcript');
+  if (!overlay || !editor || !transcript) return;
+  overlay.classList.add('visible');
+  document.body.classList.add('modal-open');
+  editor.value = transcript.value;
+  setTimeout(() => {
+    editor.focus();
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+  }, 0);
+}
+
+function closeTranscriptEditor() {
+  const overlay = $('#editTranscriptOverlay');
+  const editor = $('#editTranscriptInput');
+  if (!overlay || !editor) return;
+  overlay.classList.remove('visible');
+  document.body.classList.remove('modal-open');
+  editor.value = '';
+}
+
+function saveTranscriptEdits() {
+  const editor = $('#editTranscriptInput');
+  const transcript = $('#transcript');
+  if (!editor || !transcript) return;
+  transcript.value = editor.value;
+  closeTranscriptEditor();
+  log('Transcript updated. Ready for analysis.');
+}
+
 async function start() {
   if (running) return;
   running = true;
@@ -761,6 +876,24 @@ $('#btnNew').addEventListener('click', () => {
   });
 });
 $('#btnAnalyze').addEventListener('click', analyzeTranscript);
+$('#btnEditTranscript').addEventListener('click', openTranscriptEditor);
+$('#btnCancelEdit').addEventListener('click', closeTranscriptEditor);
+$('#btnSaveEdit').addEventListener('click', saveTranscriptEdits);
+
+const transcriptOverlay = $('#editTranscriptOverlay');
+if (transcriptOverlay) {
+  transcriptOverlay.addEventListener('click', evt => {
+    if (evt.target === transcriptOverlay) {
+      closeTranscriptEditor();
+    }
+  });
+}
+
+document.addEventListener('keydown', evt => {
+  if (evt.key === 'Escape' && transcriptOverlay?.classList.contains('visible')) {
+    closeTranscriptEditor();
+  }
+});
 
 resetAnalysis();
 </script>
